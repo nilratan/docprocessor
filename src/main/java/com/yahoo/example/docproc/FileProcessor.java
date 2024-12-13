@@ -4,19 +4,23 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.concurrent.Callable;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class FileProcessor implements Runnable {
+
+public class FileProcessor implements Callable<Results> {
     private final Path filePath;
     private final String domain;
+    private final boolean extractEmail;
+    private Results results;
 
-    public FileProcessor(Path filePath, String domain) {
+    public FileProcessor(Path filePath, String domain, boolean extractEmail) {
         this.filePath = filePath;
         this.domain = domain;
+        this.extractEmail = extractEmail;
     }
 
-    @Override
     public void run() {
         try {
             List<String> lines = Files.readAllLines(filePath);
@@ -35,7 +39,7 @@ public class FileProcessor implements Runnable {
             Map<String, Integer> bodyHistogram = HistogramCalculator.computeHistogram(body);
 
             // Extract emails
-            List<String> emails = extractEmails(subject + "\n" + body);
+            List<String> emails = (extractEmail) ? extractEmails(subject + "\n" + body) : List.of();
 
             // Output results
             System.out.println("Processing file: " + filePath.getFileName());
@@ -45,6 +49,7 @@ public class FileProcessor implements Runnable {
             System.out.println("Body Histogram:");
             HistogramCalculator.printHistogram(bodyHistogram);
             System.out.println("Emails Found: " + emails);
+            this.results = new Results(domain, subjectHistogram, bodyHistogram, emails);
         } catch (IOException e) {
             System.err.println("Error processing file: " + filePath.getFileName());
         }
@@ -61,5 +66,11 @@ public class FileProcessor implements Runnable {
         }
 
         return emails;
+    }
+
+    @Override
+    public Results call() throws Exception {
+        run();
+        return results;
     }
 }
