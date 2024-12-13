@@ -9,6 +9,8 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 public class MainApp {
 
@@ -46,14 +48,36 @@ public class MainApp {
 
 		ExecutorService executor = Executors.newFixedThreadPool(4);
 		List<Path> fileList = listFiles(configDir);
+		List<Future> futures = new ArrayList<>();
 		try {
 			for (Path filePath : fileList) {
-
-				Path parentPath = configDir.getParent();
-				String domain = parentPath.getFileName().toString();// Use the folder name as domain
-				
-				executor.submit(new FileProcessor(filePath, domain));
+				try {
+					Path parentPath = filePath.getParent();
+					String domain = parentPath.getFileName().toString();// Use the folder name as domain
+					Boolean extractEmail = Boolean.valueOf(properties.getProperty("domain_" + domain + "_extract_email"));
+					if (extractEmail == null) {
+						extractEmail = false;  //default
+					}
+					System.out.println(domain + ", " + extractEmail);
+					FileProcessor fileProcessor = new FileProcessor(filePath, domain, extractEmail);
+					Future<Results> future = executor.submit(fileProcessor);
+					futures.add(future);
+				} catch (Exception e) {
+					System.err.println("Error reading config folder: " + e.getMessage());
+				}
 			}
+			HistogramMerge histogramMerge = new HistogramMerge();
+			for (Future future : futures) {
+				try {
+					Results result = (Results) future.get(10L, TimeUnit.MINUTES);
+					System.out.println("result = " + result);
+					histogramMerge.add(result);
+				} catch (Exception e) {
+					System.err.println("Error with result: " + e.getMessage());
+				}
+			}
+//			HistogramMerge histogramMerge = new HistogramMerge(results);
+			System.out.println(histogramMerge);
 		} catch (Exception e) {
 			System.err.println("Error reading config folder: " + e.getMessage());
 		} finally {
